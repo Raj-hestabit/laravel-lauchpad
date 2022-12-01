@@ -23,12 +23,17 @@ Route::post('login', 'Auth\AuthController@login')->name('login');
 
 Route::middleware('auth:api')->group(function () {
     Route::get('logout', 'Auth\AuthController@logout');
-    Route::get('user','UserController@index');
 
+    // Route::get('user','UserController@show');
     Route::post('user', 'UserController@store');
-    Route::middleware('role:1')->group(function () {
+    Route::get('user/{id}', 'UserController@show');
+    Route::get('notifications', 'UserController@notifications');
+
+    Route::prefix('admin')->middleware('role:1')->group(function () {
         Route::put('approve-request/{id}', 'UserController@approveRequest');
         Route::delete('delete-user/{id}', 'UserController@destroy');
+        Route::get('request-pending/users', 'UserController@pendingRequestUsers');
+        Route::get('user/{id}', 'UserController@show');
     });
 });
 

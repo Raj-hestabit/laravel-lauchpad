@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\RequestApprove;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use App\Models\UserDetails;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +43,12 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
+        if(Auth::user()->user_type == 1){
+            return response()->json([
+                'status'    => 'failure',
+                'message'   => 'You are admin'
+            ]);
+        }
         $userId = Auth::user()->id;
         if(empty($userId)) {
             return response()->json([
@@ -54,7 +62,7 @@ class UserController extends Controller
         if($request->hasFile('profile_picture')){
             $file       = $request->file('profile_picture');
             $filename   = time().'_'.$file->getClientOriginalName();
-            $location   = 'users';
+            $location   = 'storage/users';
             $file->move($location,$filename);
             $fileUrl    = URL::to('/').'/'.$location.'/'.$filename;
             $request->request->add(['profile_picture_url' => $fileUrl]);
@@ -69,15 +77,15 @@ class UserController extends Controller
             $user->name = $request->name;
             $user->save();
             return response()->json([
-                'user'      => new UserResource($user),
                 'status'    => 'success',
-                'message'   => 'Profile updation request sent to Admin'
+                'message'   => 'Profile updation request sent to Admin',
+                'user'      => new UserResource($user)
             ]);
         }else{
             return response()->json([
-                'user'      => new stdClass(),
                 'status'    => 'failure',
-                'message'   => 'Something went wrong'
+                'message'   => 'Something went wrong',
+                'user'      => new stdClass()
             ]);
         }
     }
@@ -90,7 +98,29 @@ class UserController extends Controller
      */
     public function show($id)
     {
-        //
+        if(Auth::user()->user_type != 1){
+            if($id != Auth::user()->id){
+                return response()->json([
+                    'status'    => 'failure',
+                    'message'   => 'You are not authorized person to view this details',
+                ],400);
+            }
+        }
+
+        $user = User::with('UserType','UserDetails')->find($id);
+        if($user){
+            return response()->json([
+                'status'    => 'success',
+                'message'   => 'User details',
+                'user'      => new UserResource($user)
+            ]);
+        }else{
+            return response()->json([
+                'status'    => 'failure',
+                'message'   => 'User not found',
+                'user'      => new stdClass()
+            ],404);
+        }
     }
 
     /**
@@ -179,6 +209,7 @@ class UserController extends Controller
                         $request->all());
 
         if($approve){
+            event(new RequestApprove($user));
             return response()->json([
                 'status'    => 'success',
                 'message'   => 'Request approve successfully'
@@ -190,5 +221,43 @@ class UserController extends Controller
             ]);
         }
 
+    }
+
+
+    public function pendingRequestUsers(){
+        $users = User::with(['UserType', 'UserDetails'])->whereHas('UserDetails',function($q){
+            $q->where('status', 0);
+        })->where('user_type','!=',1)->get();
+
+        if($users){
+            return response()->json([
+                'status'    => 'success',
+                'message'   => 'Pending request users list',
+                'users'     => UserResource::collection($users)
+            ]);
+        } else {
+            return response()->json([
+                'status'    => 'failure',
+                'users'     => [],
+                'message'   => 'No request found'
+            ]);
+        }
+    }
+
+    public function notifications(){
+        $notifications = auth()->user()->unreadNotifications;
+        if($notifications){
+            return response()->json([
+                'status'        => 'success',
+                'message'       => 'Requests notifications',
+                'notifications' => $notifications
+            ]);
+        } else {
+            return response()->json([
+                'status'        => 'failure',
+                'message'       => 'No request found',
+                'notifications' => []
+            ]);
+        }
     }
 }
